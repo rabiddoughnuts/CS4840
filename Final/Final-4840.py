@@ -7,7 +7,7 @@ import os
 print("Current working directory:", os.getcwd())
 
 # Load the drebin dataset
-df_drebin = pd.read_csv('/run/media/Brandon/42DAA583DAA573B7/Classes/CS4840/Final/drebin.csv')  # Replace with the actual path to your drebin.csv file
+df_drebin = pd.read_csv('/run/media/Brandon/D820DA8720DA6BCE/Classes/CS4840/Final/drebin.csv')  # Replace with the actual path to your drebin.csv file
 
 # Convert class label -1 to 0
 df_drebin['class'] = df_drebin['class'].replace(-1, 0)
