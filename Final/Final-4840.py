@@ -7,9 +7,10 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.linear_model import SGDClassifier
+import numpy as np
 
 # Load the drebin dataset
-df_drebin = pd.read_csv('/run/media/Brandon/D820DA8720DA6BCE/Classes/CS4840/Final/drebin.csv')  # Replace with the actual path to your drebin.csv file
+df_drebin = pd.read_csv('/run/media/Brandon/D820DA8720DA6BCE/Classes/CS4840/Final/drebin.csv')
 
 # Convert class label -1 to 0
 df_drebin['class'] = df_drebin['class'].replace(-1, 0)
@@ -47,7 +48,7 @@ stratified_kfold = StratifiedKFold(n_splits=6)
 
 # Train and evaluate SVM model with GridSearchCV to find optimal C
 # GridSearchCV helps in finding the best hyperparameters by trying all combinations in the provided grid
-svm_params = {'C': [0.1, 1, 10, 100]}  # Hyperparameter grid for SVM. 'C' controls the trade-off between smooth decision boundary and classifying training points correctly.
+svm_params = {'C': [0.1, 1, 10, 75, 100]}  # Hyperparameter grid for SVM. 'C' controls the trade-off between smooth decision boundary and classifying training points correctly.
 svm_model = GridSearchCV(SVC(kernel='linear', random_state=42), svm_params, cv=stratified_kfold)
 svm_model.fit(X_train, y_train)  # Fit the model on training data
 optimal_C = svm_model.best_params_['C']  # Best hyperparameter found
@@ -59,7 +60,7 @@ results['SVM'] = {
 }
 
 # Train and evaluate Logistic Regression model with GridSearchCV to find optimal C
-log_reg_params = {'C': [0.1, 1, 10, 100]}  # Hyperparameter grid for Logistic Regression. 'C' controls the regularization strength.
+log_reg_params = {'C': [0.1, 1, 10, 75, 100]}  # Hyperparameter grid for Logistic Regression. 'C' controls the regularization strength.
 log_reg_model = GridSearchCV(LogisticRegression(random_state=42), log_reg_params, cv=stratified_kfold)
 log_reg_model.fit(X_train, y_train)
 optimal_C = log_reg_model.best_params_['C']
@@ -95,7 +96,7 @@ results['Decision Tree'] = {
 }
 
 # Train and evaluate AdaBoost model with GridSearchCV to find optimal n_estimators
-ada_params = {'n_estimators': [50, 100, 200]}  # Hyperparameter grid for AdaBoost. 'n_estimators' is the number of boosting stages to perform.
+ada_params = {'n_estimators': [50, 100, 175, 200]}  # Hyperparameter grid for AdaBoost. 'n_estimators' is the number of boosting stages to perform.
 ada_model = GridSearchCV(AdaBoostClassifier(algorithm='SAMME', random_state=42), ada_params, cv=stratified_kfold)
 ada_model.fit(X_train, y_train)
 optimal_n_estimators = ada_model.best_params_['n_estimators']
@@ -107,7 +108,7 @@ results['AdaBoost'] = {
 }
 
 # Train and evaluate Linear Regression model using SGD with GridSearchCV to find optimal alpha
-sgd_params = {'alpha': [0.0001, 0.001, 0.01, 0.1]}  # Hyperparameter grid for SGD. 'alpha' is the regularization term.
+sgd_params = {'alpha': [0.0001, 0.0002, 0.001, 0.01, 0.1]}  # Hyperparameter grid for SGD. 'alpha' is the regularization term.
 sgd_model = GridSearchCV(SGDClassifier(loss='log_loss', learning_rate='adaptive', eta0=0.01, random_state=42), sgd_params, cv=stratified_kfold)
 sgd_model.fit(X_train, y_train)
 optimal_alpha = sgd_model.best_params_['alpha']
