@@ -1,0 +1,59 @@
+Naive Bayes Test Set Evaluation:
+Accuracy: 0.7094414893617021
+F1 Score: 0.7141922825376062
+
+Decision Tree Test Set Evaluation:
+Accuracy: 0.9757313829787234
+F1 Score: 0.9672792469744509
+Optimal Depth: 20
+
+Linear Regression (SGD with Adam) Test Set Evaluation:
+Accuracy: 0.9753989361702128
+F1 Score: 0.9665158371040724
+Optimal alpha: 1e-05
+
+Logistic Regression Test Set Evaluation:
+Accuracy: 0.980718085106383
+F1 Score: 0.9738738738738739
+Optimal C: 100
+
+K-Nearest Neighbors Test Set Evaluation:
+Accuracy: 0.9860372340425532
+F1 Score: 0.981199641897941
+Optimal k: 1
+
+AdaBoost Test Set Evaluation:
+Accuracy: 0.9630984042553191
+F1 Score: 0.9497964721845319
+Optimal n_estimators: 250
+
+SVM Test Set Evaluation:
+Accuracy: 0.9813829787234043
+F1 Score: 0.9748427672955975
+Optimal C: 150
+
+Random Forest Test Set Evaluation:
+Accuracy: 0.9860372340425532
+F1 Score: 0.9809782608695652
+Optimal Depth: 19
+Optimal n_estimators: 300
+
+Gradient Boosting Test Set Evaluation:
+Accuracy: 0.9873670212765957
+F1 Score: 0.9828519855595668
+Optimal Depth: 9
+Optimal n_estimators: 250
+
+Majority Vote Ensemble Test Set Evaluation:
+Accuracy: 0.3696808510638298
+F1 Score: 0.5398058252427185
+
+Weighted Ensemble Test Set Evaluation:
+Accuracy: 0.9870345744680851
+F1 Score: 0.982424515547544
+Optimal Power: 6
+
+Stacking Test Set Evaluation:
+Accuracy: 0.9903590425531915
+F1 Score: 0.9869310500225327
+
