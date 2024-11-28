@@ -2,15 +2,15 @@ Naive Bayes Test Set Evaluation:
 Accuracy: 0.7094414893617021
 F1 Score: 0.7141922825376062
 
-Decision Tree Test Set Evaluation:
-Accuracy: 0.9757313829787234
-F1 Score: 0.9672792469744509
-Optimal Depth: 20
-
 Linear Regression (SGD with Adam) Test Set Evaluation:
 Accuracy: 0.9753989361702128
 F1 Score: 0.9665158371040724
 Optimal alpha: 1e-05
+
+Decision Tree Test Set Evaluation:
+Accuracy: 0.9757313829787234
+F1 Score: 0.9672792469744509
+Optimal Depth: 20
 
 Logistic Regression Test Set Evaluation:
 Accuracy: 0.980718085106383
@@ -45,8 +45,8 @@ Optimal Depth: 9
 Optimal n_estimators: 250
 
 Majority Vote Ensemble Test Set Evaluation:
-Accuracy: 0.3696808510638298
-F1 Score: 0.5398058252427185
+Accuracy: 0.9853723404255319
+F1 Score: 0.9802158273381295
 
 Weighted Ensemble Test Set Evaluation:
 Accuracy: 0.9870345744680851

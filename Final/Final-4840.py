@@ -35,206 +35,210 @@ manager = Manager()
 results = manager.dict()
 
 # Define StratifiedKFold cross-validation
-stratified_kfold = StratifiedKFold(n_splits=4)
+stratified_kfold = StratifiedKFold(n_splits=6)
 
 # Function to train and evaluate a model
 def train_and_evaluate(model, params, model_name, results):
     try:
+        # Perform grid search with cross-validation
         grid_search = GridSearchCV(model, params, cv=stratified_kfold, n_jobs=-1)
+        
+        # Fit the model on the training data
         grid_search.fit(X_train, y_train)
+        
+        # Get the best hyperparameters
         optimal_params = grid_search.best_params_
+        
+        # Predict on the test set
         y_test_pred = grid_search.predict(X_test)
+        
+        # Calculate accuracy and F1 score
+        accuracy = accuracy_score(y_test, y_test_pred)
+        f1 = f1_score(y_test, y_test_pred)
+        
+        # Store the results in the shared dictionary
         results[model_name] = {
-            'Accuracy': accuracy_score(y_test, y_test_pred),
-            'F1 Score': f1_score(y_test, y_test_pred),
+            'Accuracy': accuracy,
+            'F1 Score': f1,
+            'predictions': y_test_pred,
             **optimal_params
         }
+        
         print(f"{model_name} results: {results[model_name]}")
     except Exception as e:
         print(f"Error training {model_name}: {e}")
 
 # Define models and their hyperparameters
 models_params = [
-    (SVC(kernel='linear', random_state=42), {'C': [0.1, 1, 10, 100, 150, 200]}, 'SVM'),
-    (LogisticRegression(random_state=42), {'C': [0.1, 1, 10, 100, 150, 200]}, 'Logistic Regression'),
-    (KNeighborsClassifier(), {'n_neighbors': range(1, 21)}, 'K-Nearest Neighbors'),
-    (DecisionTreeClassifier(random_state=42), {'max_depth': range(1, 21)}, 'Decision Tree'),
-    (AdaBoostClassifier(algorithm='SAMME', random_state=42), {'n_estimators': [50, 100, 200, 250, 300]}, 'AdaBoost'),
-    (SGDClassifier(loss='log_loss', learning_rate='adaptive', eta0=0.01, random_state=42), {'alpha': [0.000001, 0.00001, 0.0001, 0.001, 0.01]}, 'Linear Regression (SGD with Adam)'),
-    (RandomForestClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21)}, 'Random Forest'),
-    (GradientBoostingClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21)}, 'Gradient Boosting'),
-    (GaussianNB(), {}, 'Naive Bayes')
+    # Support Vector Machine (SVM) with linear kernel: Finds the hyperplane that best separates the classes
+    ('SVM', SVC(kernel='linear', random_state=42), {'C': [0.1, 1, 10, 100, 150, 200]}),
+    
+    # Logistic Regression: Models the probability of the default class using a logistic function
+    ('Logistic Regression', LogisticRegression(random_state=42), {'C': [0.1, 1, 10, 100, 150, 200]}),
+    
+    # K-Nearest Neighbors (KNN): Classifies a sample based on the majority class among its k-nearest neighbors
+    ('K-Nearest Neighbors', KNeighborsClassifier(), {'n_neighbors': range(1, 21)}),
+    
+    # Decision Tree: Splits the data into subsets based on the feature that results in the most homogeneous subsets
+    ('Decision Tree', DecisionTreeClassifier(random_state=42), {'max_depth': range(1, 21)}),
+    
+    # AdaBoost with SAMME.R algorithm: Combines multiple weak classifiers to create a strong classifier
+    ('AdaBoost', AdaBoostClassifier(algorithm='SAMME', random_state=42), {'n_estimators': [50, 100, 200, 250, 300]}),
+    
+    # Stochastic Gradient Descent (SGD) with log loss: Optimizes the log loss function using gradient descent
+    ('Linear Regression (SGD with Adam)', SGDClassifier(loss='log_loss', learning_rate='adaptive', eta0=0.01, random_state=42), {'alpha': [0.000001, 0.00001, 0.0001, 0.001, 0.01]}),
+    
+    # Random Forest: Constructs multiple decision trees and outputs the mode of their predictions
+    ('Random Forest', RandomForestClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21)}),
+    
+    # Gradient Boosting: Builds an ensemble of trees in a stage-wise fashion to minimize the loss function
+    ('Gradient Boosting', GradientBoostingClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21)}),
+    
+    # Naive Bayes: Applies Bayes' theorem with the assumption of independence between features
+    ('Naive Bayes', GaussianNB(), {})
 ]
 
 # Parallelize the training and evaluation
-Parallel(n_jobs=-1)(delayed(train_and_evaluate)(model, params, model_name, results) for model, params, model_name in models_params)
+Parallel(n_jobs=-1)(delayed(train_and_evaluate)(model, params, model_name, results) for model_name, model, params in models_params)
 
 # Convert results back to a regular dictionary
 results = dict(results)
 
-# Check if 'SVM' key exists in results
-if 'SVM' not in results:
-    print("SVM results not found in the results dictionary.")
-else:
-    # Continue with the rest of the code
-    svm_pred = results['SVM']['Accuracy']
-    log_reg_pred = results['Logistic Regression']['Accuracy']
-    knn_pred = results['K-Nearest Neighbors']['Accuracy']
-    dt_pred = results['Decision Tree']['Accuracy']
-    ada_pred = results['AdaBoost']['Accuracy']
-    sgd_pred = results['Linear Regression (SGD with Adam)']['Accuracy']
-    rf_pred = results['Random Forest']['Accuracy']
-    gb_pred = results['Gradient Boosting']['Accuracy']
-    nb_pred = results['Naive Bayes']['Accuracy']
+# Function to extract and transform predictions for a single model
+def extract_transform_predictions(model_name):
+    return np.where(results[model_name]['predictions'] == 0, -1, results[model_name]['predictions'])
 
-    # Convert predictions: 0 to -1, 1 remains 1
-    svm_pred = np.where(svm_pred == 0, -1, 1)
-    log_reg_pred = np.where(log_reg_pred == 0, -1, 1)
-    knn_pred = np.where(knn_pred == 0, -1, 1)
-    dt_pred = np.where(dt_pred == 0, -1, 1)
-    ada_pred = np.where(ada_pred == 0, -1, 1)
-    sgd_pred = np.where(sgd_pred == 0, -1, 1)
-    rf_pred = np.where(rf_pred == 0, -1, 1)
-    gb_pred = np.where(gb_pred == 0, -1, 1)
-    nb_pred = np.where(nb_pred == 0, -1, 1)
+# List of model names
+model_names = [
+    'SVM',
+    'Logistic Regression',
+    'K-Nearest Neighbors',
+    'Decision Tree',
+    'AdaBoost',
+    'Linear Regression (SGD with Adam)',
+    'Random Forest',
+    'Gradient Boosting',
+    'Naive Bayes'
+]
 
-    # Initialize array to store votes
-    votes = np.zeros_like(y_test, dtype=int)
+# Parallelize the extraction and transformation of predictions
+predictions_list = Parallel(n_jobs=-1)(delayed(extract_transform_predictions)(model_name) for model_name in model_names)
 
-    # Add votes for each model
-    votes += svm_pred
-    votes += log_reg_pred
-    votes += knn_pred
-    votes += dt_pred
-    votes += ada_pred
-    votes += sgd_pred
-    votes += rf_pred
-    votes += gb_pred
-    votes += nb_pred
+# Stack the predictions into a single array
+predictions = np.column_stack(predictions_list)
 
-    # Determine final prediction based on majority vote
-    majority_pred = (votes >= 0).astype(int)
+# Initialize array to store votes
+votes = np.zeros_like(predictions[:, 0], dtype=int)
 
-    # Calculate accuracy and F1 score for the majority vote ensemble method
-    majority_accuracy = accuracy_score(y_test, majority_pred)
-    majority_f1 = f1_score(y_test, majority_pred)
+# Add votes for each model
+for pred in predictions.T:
+    votes += pred
 
-    # Add majority vote ensemble results to the results dictionary
-    results['Majority Vote Ensemble'] = {
-        'Accuracy': majority_accuracy,
-        'F1 Score': majority_f1
-    }
+# Determine final prediction based on majority vote
+majority_pred = (votes >= 0).astype(int)
 
-    class WeightedEnsembleClassifier(BaseEstimator, ClassifierMixin):
-        def __init__(self, models, power=2):
-            self.models = models
-            self.power = power
+# Calculate accuracy and F1 score for the majority vote ensemble method
+majority_accuracy = accuracy_score(y_test, majority_pred)
+majority_f1 = f1_score(y_test, majority_pred)
 
-        def fit(self, X, y):
-            for name, model in self.models:
-                model.fit(X, y)
-            return self
+# Add majority vote ensemble results to the results dictionary
+results['Majority Vote Ensemble'] = {
+    'Accuracy': majority_accuracy,
+    'F1 Score': majority_f1
+}
 
-        def predict(self, X):
-            predictions = np.zeros((X.shape[0], len(self.models)))
-            accuracies = np.zeros(len(self.models))
+# Extract accuracies from the results dictionary
+accuracies = np.array([
+    results['SVM']['Accuracy'],
+    results['Logistic Regression']['Accuracy'],
+    results['K-Nearest Neighbors']['Accuracy'],
+    results['Decision Tree']['Accuracy'],
+    results['AdaBoost']['Accuracy'],
+    results['Linear Regression (SGD with Adam)']['Accuracy'],
+    results['Random Forest']['Accuracy'],
+    results['Gradient Boosting']['Accuracy'],
+    results['Naive Bayes']['Accuracy']
+])
 
-            def get_predictions_and_accuracy(i, name, model):
-                pred = model.predict(X)
-                pred = np.where(pred == 0, -1, 1)
-                accuracy = accuracy_score(y_train, model.predict(X_train))
-                return pred, accuracy
+class WeightedEnsembleClassifier(BaseEstimator, ClassifierMixin):
+    def __init__(self, predictions=None, accuracies=None, power=2):
+        self.predictions = predictions
+        self.accuracies = accuracies
+        self.power = power
 
-            results = Parallel(n_jobs=-1)(delayed(get_predictions_and_accuracy)(i, name, model) for i, (name, model) in enumerate(self.models))
+    def fit(self, X, y):
+        # No fitting necessary as predictions are already provided
+        return self
 
-            for i, (pred, accuracy) in enumerate(results):
-                predictions[:, i] = pred
-                accuracies[i] = accuracy
+    def predict(self, X):
+        # Ensure predictions are for the correct number of samples
+        if self.predictions.shape[0] != X.shape[0]:
+            raise ValueError("Mismatch in number of samples between predictions and input data")
+        
+        weights = self.accuracies ** self.power
+        weights /= weights.sum()
 
-            weights = accuracies ** self.power
-            weights /= weights.sum()
+        weighted_votes = np.dot(self.predictions, weights)
+        return (weighted_votes >= 0).astype(int)
 
-            weighted_votes = np.dot(predictions, weights)
-            return (weighted_votes >= 0).astype(int)
+    def set_params(self, **params):
+        for key, value in params.items():
+            setattr(self, key, value)
+        return self
 
-    # Define the models
-    models = [
-        ('svm', SVC(kernel='linear', C=results['SVM']['C'], random_state=42)),
-        ('log_reg', LogisticRegression(C=results['Logistic Regression']['C'], random_state=42)),
-        ('knn', KNeighborsClassifier(n_neighbors=results['K-Nearest Neighbors']['n_neighbors'])),
-        ('dt', DecisionTreeClassifier(max_depth=results['Decision Tree']['max_depth'], random_state=42)),
-        ('ada', AdaBoostClassifier(n_estimators=results['AdaBoost']['n_estimators'], algorithm='SAMME', random_state=42)),
-        ('sgd', SGDClassifier(alpha=results['Linear Regression (SGD with Adam)']['alpha'], loss='log_loss', learning_rate='adaptive', eta0=0.01, random_state=42)),
-        ('rf', RandomForestClassifier(n_estimators=results['Random Forest']['n_estimators'], max_depth=results['Random Forest']['max_depth'], random_state=42)),
-        ('gb', GradientBoostingClassifier(n_estimators=results['Gradient Boosting']['n_estimators'], max_depth=results['Gradient Boosting']['max_depth'], random_state=42)),
-        ('nb', GaussianNB())
-    ]
+    def get_params(self, deep=True):
+        return {'predictions': self.predictions, 'accuracies': self.accuracies, 'power': self.power}
 
-    # Define the parameter grid
-    param_grid = {'power': [1, 2, 3, 4, 5, 6]}
-
-    # Initialize the weighted ensemble classifier
-    weighted_ensemble = WeightedEnsembleClassifier(models=models)
-
-    # Use GridSearchCV to find the optimal power
-    grid_search = GridSearchCV(weighted_ensemble, param_grid, cv=stratified_kfold, n_jobs=-1)
-    grid_search.fit(X_train, y_train)
-
-    # Get the best power
-    best_power = grid_search.best_params_['power']
-
-    # Predict on the test set using the best power
-    weighted_ensemble = WeightedEnsembleClassifier(models=models, power=best_power)
-    weighted_ensemble.fit(X_train, y_train)
+# Function to evaluate a specific power value
+def evaluate_power(power, predictions, accuracies, X_test, y_test):
+    weighted_ensemble = WeightedEnsembleClassifier(predictions=predictions, accuracies=accuracies, power=power)
     ensemble_pred = weighted_ensemble.predict(X_test)
+    accuracy = accuracy_score(y_test, ensemble_pred)
+    f1 = f1_score(y_test, ensemble_pred)
+    return power, accuracy, f1
 
-    # Calculate accuracy and F1 score for the ensemble method
-    ensemble_accuracy = accuracy_score(y_test, ensemble_pred)
-    ensemble_f1 = f1_score(y_test, ensemble_pred)
+# Define the range of power values to test
+power_values = [0.1, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
-    # Add ensemble results to the results dictionary
-    results['Weighted Ensemble'] = {
-        'Accuracy': ensemble_accuracy,
-        'F1 Score': ensemble_f1,
-        'Optimal Power': best_power
-    }
+# Parallelize the evaluation of power values
+results_parallel = Parallel(n_jobs=-1)(delayed(evaluate_power)(power, predictions, accuracies, X_test, y_test) for power in power_values)
 
-    # Model Stacking: Combine predictions of multiple models using a second-level model
-    estimators = [
-        ('svm', SVC(kernel='linear', C=results['SVM']['C'], random_state=42)),
-        ('log_reg', LogisticRegression(C=results['Logistic Regression']['C'], random_state=42)),
-        ('knn', KNeighborsClassifier(n_neighbors=results['K-Nearest Neighbors']['n_neighbors'])),
-        ('dt', DecisionTreeClassifier(max_depth=results['Decision Tree']['max_depth'], random_state=42)),
-        ('ada', AdaBoostClassifier(n_estimators=results['AdaBoost']['n_estimators'], algorithm='SAMME', random_state=42)),
-        ('sgd', SGDClassifier(alpha=results['Linear Regression (SGD with Adam)']['alpha'], loss='log_loss', learning_rate='adaptive', eta0=0.01, random_state=42)),
-        ('rf', RandomForestClassifier(n_estimators=results['Random Forest']['n_estimators'], max_depth=results['Random Forest']['max_depth'], random_state=42)),
-        ('gb', GradientBoostingClassifier(n_estimators=results['Gradient Boosting']['n_estimators'], max_depth=results['Gradient Boosting']['max_depth'], random_state=42)),
-        ('nb', GaussianNB())
-    ]
-    stacking_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
-    stacking_model.fit(X_train, y_train)
-    y_test_pred = stacking_model.predict(X_test)
-    results['Stacking'] = {
-        'Accuracy': accuracy_score(y_test, y_test_pred),
-        'F1 Score': f1_score(y_test, y_test_pred)
-    }
+# Find the best power value based on accuracy
+best_power, best_accuracy, best_f1 = max(results_parallel, key=lambda x: x[1])
 
-    # Write results to a text file
-    with open('./Final/model_results.txt', 'w') as f:
-        for model, metrics in results.items():
-            f.write(f"{model} Test Set Evaluation:\n")
-            f.write(f"Accuracy: {metrics['Accuracy']}\n")
-            f.write(f"F1 Score: {metrics['F1 Score']}\n")
-            if 'C' in metrics:
-                f.write(f"Optimal C: {metrics['C']}\n")
-            if 'n_neighbors' in metrics:
-                f.write(f"Optimal k: {metrics['n_neighbors']}\n")
-            if 'max_depth' in metrics:
-                f.write(f"Optimal Depth: {metrics['max_depth']}\n")
-            if 'n_estimators' in metrics:
-                f.write(f"Optimal n_estimators: {metrics['n_estimators']}\n")
-            if 'alpha' in metrics:
-                f.write(f"Optimal alpha: {metrics['alpha']}\n")
-            if 'Optimal Power' in metrics:
-                f.write(f"Optimal Power: {metrics['Optimal Power']}\n")
-            f.write("\n")
+# Add ensemble results to the results dictionary
+results['Weighted Ensemble'] = {
+    'Accuracy': best_accuracy,
+    'F1 Score': best_f1,
+    'Optimal Power': best_power
+}
+
+# Model Stacking: Combine predictions of multiple models using a second-level model
+estimators = [(name, model.set_params(**{k: results[name][k] for k in params.keys()})) for name, model, params in models_params]
+stacking_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
+stacking_model.fit(X_train, y_train)
+y_test_pred = stacking_model.predict(X_test)
+results['Stacking'] = {
+    'Accuracy': accuracy_score(y_test, y_test_pred),
+    'F1 Score': f1_score(y_test, y_test_pred)
+}
+
+# Write results to a text file
+with open('./Final/model_results.txt', 'w') as f:
+    for model, metrics in results.items():
+        f.write(f"{model} Test Set Evaluation:\n")
+        f.write(f"Accuracy: {metrics['Accuracy']}\n")
+        f.write(f"F1 Score: {metrics['F1 Score']}\n")
+        if 'C' in metrics:
+            f.write(f"Optimal C: {metrics['C']}\n")
+        if 'n_neighbors' in metrics:
+            f.write(f"Optimal k: {metrics['n_neighbors']}\n")
+        if 'max_depth' in metrics:
+            f.write(f"Optimal Depth: {metrics['max_depth']}\n")
+        if 'n_estimators' in metrics:
+            f.write(f"Optimal n_estimators: {metrics['n_estimators']}\n")
+        if 'alpha' in metrics:
+            f.write(f"Optimal alpha: {metrics['alpha']}\n")
+        if 'Optimal Power' in metrics:
+            f.write(f"Optimal Power: {metrics['Optimal Power']}\n")
+        f.write("\n")
