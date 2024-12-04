@@ -2,17 +2,23 @@ import pandas as pd
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import SGDClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import StackingClassifier
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.decomposition import PCA
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from joblib import Parallel, delayed
 from multiprocessing import Manager
+import matplotlib.pyplot as plt
+from itertools import product
 
 # Load the drebin dataset
 df_drebin = pd.read_csv('./Final/drebin.csv')
@@ -24,8 +30,13 @@ df_drebin['class'] = df_drebin['class'].replace(-1, 0)
 X = df_drebin.drop('class', axis=1)  # Features (input variables)
 y = df_drebin['class']  # Labels (output variable)
 
+# Apply PCA for dimensionality reduction
+pca = PCA(n_components=0.95)  # Retain 95% of variance
+X_pca = pca.fit_transform(X)
+
 # Split the data into training (80%) and test (20%) sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+X_train_pca, X_test_pca, _, _ = train_test_split(X_pca, y, test_size=0.2, random_state=42, stratify=y)
 
 print(f"Training set size: {X_train.shape[0]}")
 print(f"Test set size: {X_test.shape[0]}")
@@ -37,20 +48,41 @@ results = manager.dict()
 # Define StratifiedKFold cross-validation
 stratified_kfold = StratifiedKFold(n_splits=6)
 
+# Function to filter incompatible hyperparameter combinations
+def filter_params(params):
+    if 'penalty' in params and 'solver' in params:
+        if params['penalty'] == 'l1' and params['solver'] not in ['liblinear', 'saga']:
+            return False
+        if params['penalty'] == 'elasticnet' and params['solver'] != 'saga':
+            return False
+    return True
+
+# Function to generate all combinations of hyperparameters
+def generate_param_grid(param_grid):
+    keys, values = zip(*param_grid.items())
+    for v in product(*values):
+        params = dict(zip(keys, v))
+        if filter_params(params):
+            yield params
+
 # Function to train and evaluate a model
-def train_and_evaluate(model, params, model_name, results):
+def train_and_evaluate(model, param_grid, model_name, results, use_pca=False):
     try:
+        # Select the appropriate training and test sets
+        X_train_used = X_train_pca if use_pca else X_train
+        X_test_used = X_test_pca if use_pca else X_test
+        
         # Perform grid search with cross-validation
-        grid_search = GridSearchCV(model, params, cv=stratified_kfold, n_jobs=-1)
+        grid_search = GridSearchCV(model, list(generate_param_grid(param_grid)), cv=stratified_kfold, n_jobs=-1, return_train_score=True)
         
         # Fit the model on the training data
-        grid_search.fit(X_train, y_train)
+        grid_search.fit(X_train_used, y_train)
         
         # Get the best hyperparameters
         optimal_params = grid_search.best_params_
         
         # Predict on the test set
-        y_test_pred = grid_search.predict(X_test)
+        y_test_pred = grid_search.predict(X_test_used)
         
         # Calculate accuracy and F1 score
         accuracy = accuracy_score(y_test, y_test_pred)
@@ -61,6 +93,7 @@ def train_and_evaluate(model, params, model_name, results):
             'Accuracy': accuracy,
             'F1 Score': f1,
             'predictions': y_test_pred,
+            'grid_search': grid_search,
             **optimal_params
         }
         
@@ -70,39 +103,75 @@ def train_and_evaluate(model, params, model_name, results):
 
 # Define models and their hyperparameters
 models_params = [
-    # Support Vector Machine (SVM) with linear kernel: Finds the hyperplane that best separates the classes
-    ('SVM', SVC(kernel='linear', random_state=42), {'C': [0.1, 1, 10, 100, 150, 200]}),
-    
+    # Support Vector Machine (SVM) with different kernels and C values
+    ('SVM', SVC(random_state=42), {'C': [0.1, 1, 10, 100, 150, 200], 'kernel': ['linear', 'poly', 'rbf', 'sigmoid'], 'gamma': ['scale', 'auto']}),
+
     # Logistic Regression: Models the probability of the default class using a logistic function
-    ('Logistic Regression', LogisticRegression(random_state=42), {'C': [0.1, 1, 10, 100, 150, 200]}),
-    
+    ('Logistic Regression', LogisticRegression(random_state=42, max_iter=1200), {'C': [0.1, 1, 10, 100, 150, 200], 'penalty': ['l1', 'l2', 'elasticnet'], 'solver': ['liblinear', 'saga']}),
+
     # K-Nearest Neighbors (KNN): Classifies a sample based on the majority class among its k-nearest neighbors
-    ('K-Nearest Neighbors', KNeighborsClassifier(), {'n_neighbors': range(1, 21)}),
-    
+    ('K-Nearest Neighbors', KNeighborsClassifier(), {'n_neighbors': range(1, 21), 'weights': ['uniform', 'distance'], 'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']}),
+
     # Decision Tree: Splits the data into subsets based on the feature that results in the most homogeneous subsets
-    ('Decision Tree', DecisionTreeClassifier(random_state=42), {'max_depth': range(1, 21)}),
-    
+    ('Decision Tree', DecisionTreeClassifier(random_state=42), {'max_depth': range(1, 21), 'min_samples_split': [2, 5, 10], 'min_samples_leaf': [1, 2, 4], 'criterion': ['gini', 'entropy']}),
+
     # AdaBoost with SAMME.R algorithm: Combines multiple weak classifiers to create a strong classifier
-    ('AdaBoost', AdaBoostClassifier(algorithm='SAMME', random_state=42), {'n_estimators': [50, 100, 200, 250, 300]}),
-    
-    # Stochastic Gradient Descent (SGD) with log loss: Optimizes the log loss function using gradient descent
-    ('Linear Regression (SGD with Adam)', SGDClassifier(loss='log_loss', learning_rate='adaptive', eta0=0.01, random_state=42), {'alpha': [0.000001, 0.00001, 0.0001, 0.001, 0.01]}),
-    
+    ('AdaBoost', AdaBoostClassifier(algorithm='SAMME', random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'learning_rate': [0.01, 0.1, 1, 10]}),
+
+    # Stochastic Gradient Descent (SGD) with different loss functions and alpha values
+    ('Linear Regression (SGD with Adam)', SGDClassifier(learning_rate='adaptive', eta0=0.01, random_state=42, max_iter=1200), {'alpha': [0.000001, 0.00001, 0.0001, 0.001, 0.01], 'loss': ['log_loss', 'hinge', 'modified_huber', 'perceptron', 'squared_hinge'], 'penalty': ['l2', 'l1', 'elasticnet']}),
+
     # Random Forest: Constructs multiple decision trees and outputs the mode of their predictions
-    ('Random Forest', RandomForestClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21)}),
-    
+    ('Random Forest', RandomForestClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21), 'min_samples_split': [2, 5, 10], 'min_samples_leaf': [1, 2, 4], 'criterion': ['gini', 'entropy']}),
+
     # Gradient Boosting: Builds an ensemble of trees in a stage-wise fashion to minimize the loss function
-    ('Gradient Boosting', GradientBoostingClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'max_depth': range(1, 21)}),
-    
+    ('Gradient Boosting', GradientBoostingClassifier(random_state=42), {'n_estimators': [50, 100, 200, 250, 300], 'learning_rate': [0.01, 0.1, 0.2], 'max_depth': range(1, 21), 'min_samples_split': [2, 5, 10], 'min_samples_leaf': [1, 2, 4], 'criterion': ['friedman_mse', 'mse', 'mae']}),
+
     # Naive Bayes: Applies Bayes' theorem with the assumption of independence between features
-    ('Naive Bayes', GaussianNB(), {})
+    ('Naive Bayes', GaussianNB(), {}),
+
+    # Quadratic Discriminant Analysis (QDA) with PCA
+    ('QDA', QuadraticDiscriminantAnalysis(), {'reg_param': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]}),
+
+    # Kernel Ridge Regression without dual mode
+    ('Kernel Ridge', KernelRidge(), {'alpha': [0.1, 1, 10, 100], 'kernel': ['linear', 'poly', 'rbf', 'sigmoid'], 'gamma': [0.1, 1, 10]}),
+
+    # Gaussian Process Classifier with PCA
+    ('Gaussian Process', GaussianProcessClassifier(random_state=42), {'kernel': [1.0 * RBF(length_scale) for length_scale in [0.1, 1.0, 10.0]], 'n_restarts_optimizer': [0, 1, 2]})
 ]
 
 # Parallelize the training and evaluation
-Parallel(n_jobs=-1)(delayed(train_and_evaluate)(model, params, model_name, results) for model_name, model, params in models_params)
+Parallel(n_jobs=-1)(delayed(train_and_evaluate)(model, params, model_name, results, use_pca=(model_name in ['QDA', 'Gaussian Process'])) for model_name, model, params in models_params)
 
 # Convert results back to a regular dictionary
 results = dict(results)
+
+# Plot performance as hyperparameters change
+for model_name, model, params in models_params:
+    grid_search = results[model_name]['grid_search']
+    param_name = list(params.keys())[0]
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot accuracy
+    plt.subplot(1, 2, 1)
+    plt.plot(grid_search.cv_results_['param_' + param_name], grid_search.cv_results_['mean_test_score'], marker='o')
+    plt.title(f'{model_name} - Accuracy vs {param_name}')
+    plt.xlabel(param_name)
+    plt.ylabel('Accuracy')
+    plt.grid(True)
+    
+    # Plot F1 score
+    plt.subplot(1, 2, 2)
+    plt.plot(grid_search.cv_results_['param_' + param_name], grid_search.cv_results_['mean_test_score'], marker='o')
+    plt.title(f'{model_name} - F1 Score vs {param_name}')
+    plt.xlabel(param_name)
+    plt.ylabel('F1 Score')
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(f'./Final/{model_name}_performance.png')
+    plt.show()
 
 # Function to extract and transform predictions for a single model
 def extract_transform_predictions(model_name):
@@ -118,7 +187,10 @@ model_names = [
     'Linear Regression (SGD with Adam)',
     'Random Forest',
     'Gradient Boosting',
-    'Naive Bayes'
+    'Naive Bayes',
+    'QDA',
+    'Kernel Ridge',
+    'Gaussian Process'
 ]
 
 # Parallelize the extraction and transformation of predictions
@@ -157,7 +229,10 @@ accuracies = np.array([
     results['Linear Regression (SGD with Adam)']['Accuracy'],
     results['Random Forest']['Accuracy'],
     results['Gradient Boosting']['Accuracy'],
-    results['Naive Bayes']['Accuracy']
+    results['Naive Bayes']['Accuracy'],
+    results['QDA']['Accuracy'],
+    results['Kernel Ridge']['Accuracy'],
+    results['Gaussian Process']['Accuracy']
 ])
 
 class WeightedEnsembleClassifier(BaseEstimator, ClassifierMixin):
@@ -213,18 +288,54 @@ results['Weighted Ensemble'] = {
     'Optimal Power': best_power
 }
 
+# Plot performance of the weighted ensemble method as power changes
+powers, accuracies, f1_scores = zip(*results_parallel)
+
+plt.figure(figsize=(12, 6))
+
+# Plot accuracy
+plt.subplot(1, 2, 1)
+plt.plot(powers, accuracies, marker='o')
+plt.title('Weighted Ensemble - Accuracy vs Power')
+plt.xlabel('Power')
+plt.ylabel('Accuracy')
+plt.grid(True)
+
+# Plot F1 score
+plt.subplot(1, 2, 2)
+plt.plot(powers, f1_scores, marker='o')
+plt.title('Weighted Ensemble - F1 Score vs Power')
+plt.xlabel('Power')
+plt.ylabel('F1 Score')
+plt.grid(True)
+
+plt.tight_layout()
+plt.savefig('./Final/Weighted_Ensemble_performance.png')
+plt.show()
+
 # Model Stacking: Combine predictions of multiple models using a second-level model
 estimators = [(name, model.set_params(**{k: results[name][k] for k in params.keys()})) for name, model, params in models_params]
-stacking_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
-stacking_model.fit(X_train, y_train)
-y_test_pred = stacking_model.predict(X_test)
+
+# Define hyperparameters for StackingClassifier
+stacking_params = {
+    'final_estimator': [LogisticRegression(), RandomForestClassifier(), GradientBoostingClassifier()],
+    'cv': [3, 5, 10],
+    'passthrough': [False, True]
+}
+
+stacking_model = StackingClassifier(estimators=estimators)
+stacking_grid_search = GridSearchCV(stacking_model, stacking_params, cv=stratified_kfold, n_jobs=-1, return_train_score=True)
+stacking_grid_search.fit(X_train, y_train)
+y_test_pred = stacking_grid_search.predict(X_test)
+
 results['Stacking'] = {
     'Accuracy': accuracy_score(y_test, y_test_pred),
-    'F1 Score': f1_score(y_test, y_test_pred)
+    'F1 Score': f1_score(y_test, y_test_pred),
+    'Best Params': stacking_grid_search.best_params_
 }
 
 # Write results to a text file
-with open('./Final/model_results.txt', 'w') as f:
+with open('./Final/models_results.txt', 'w') as f:
     for model, metrics in results.items():
         f.write(f"{model} Test Set Evaluation:\n")
         f.write(f"Accuracy: {metrics['Accuracy']}\n")
@@ -241,4 +352,14 @@ with open('./Final/model_results.txt', 'w') as f:
             f.write(f"Optimal alpha: {metrics['alpha']}\n")
         if 'Optimal Power' in metrics:
             f.write(f"Optimal Power: {metrics['Optimal Power']}\n")
+        if 'kernel' in metrics:
+            f.write(f"Optimal Kernel: {metrics['kernel']}\n")
+        if 'loss' in metrics:
+            f.write(f"Optimal Loss: {metrics['loss']}\n")
+        if 'reg_param' in metrics:
+            f.write(f"Optimal reg_param: {metrics['reg_param']}\n")
+        if 'n_restarts_optimizer' in metrics:
+            f.write(f"Optimal n_restarts_optimizer: {metrics['n_restarts_optimizer']}\n")
+        if 'Best Params' in metrics:
+            f.write(f"Best Params: {metrics['Best Params']}\n")
         f.write("\n")
