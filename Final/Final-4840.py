@@ -18,7 +18,6 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from joblib import Parallel, delayed
 from multiprocessing import Manager
 import matplotlib.pyplot as plt
-from itertools import product
 
 # Load the drebin dataset
 df_drebin = pd.read_csv('./Final/drebin.csv')
@@ -48,23 +47,6 @@ results = manager.dict()
 # Define StratifiedKFold cross-validation
 stratified_kfold = StratifiedKFold(n_splits=6)
 
-# Function to filter incompatible hyperparameter combinations
-def filter_params(params):
-    if 'penalty' in params and 'solver' in params:
-        if params['penalty'] == 'l1' and params['solver'] not in ['liblinear', 'saga']:
-            return False
-        if params['penalty'] == 'elasticnet' and params['solver'] != 'saga':
-            return False
-    return True
-
-# Function to generate all combinations of hyperparameters
-def generate_param_grid(param_grid):
-    keys, values = zip(*param_grid.items())
-    for v in product(*values):
-        params = dict(zip(keys, v))
-        if filter_params(params):
-            yield params
-
 # Function to train and evaluate a model
 def train_and_evaluate(model, param_grid, model_name, results, use_pca=False):
     try:
@@ -73,7 +55,7 @@ def train_and_evaluate(model, param_grid, model_name, results, use_pca=False):
         X_test_used = X_test_pca if use_pca else X_test
         
         # Perform grid search with cross-validation
-        grid_search = GridSearchCV(model, list(generate_param_grid(param_grid)), cv=stratified_kfold, n_jobs=-1, return_train_score=True)
+        grid_search = GridSearchCV(model, param_grid, cv=stratified_kfold, n_jobs=-1, return_train_score=True)
         
         # Fit the model on the training data
         grid_search.fit(X_train_used, y_train)
@@ -107,7 +89,9 @@ models_params = [
     ('SVM', SVC(random_state=42), {'C': [0.1, 1, 10, 100, 150, 200], 'kernel': ['linear', 'poly', 'rbf', 'sigmoid'], 'gamma': ['scale', 'auto']}),
 
     # Logistic Regression: Models the probability of the default class using a logistic function
-    ('Logistic Regression', LogisticRegression(random_state=42, max_iter=1200), {'C': [0.1, 1, 10, 100, 150, 200], 'penalty': ['l1', 'l2', 'elasticnet'], 'solver': ['liblinear', 'saga']}),
+    ('Logistic Regression (liblinear)', LogisticRegression(random_state=42, max_iter=1200, solver='liblinear'), {'C': [0.1, 1, 10, 100, 150, 200], 'penalty': ['l1', 'l2']}),
+
+    ('Logistic Regression (saga)', LogisticRegression(random_state=42, max_iter=1200, solver='saga'), {'C': [0.1, 1, 10, 100, 150, 200], 'penalty': ['l1', 'l2', 'elasticnet']}),
 
     # K-Nearest Neighbors (KNN): Classifies a sample based on the majority class among its k-nearest neighbors
     ('K-Nearest Neighbors', KNeighborsClassifier(), {'n_neighbors': range(1, 21), 'weights': ['uniform', 'distance'], 'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']}),
@@ -141,7 +125,7 @@ models_params = [
 ]
 
 # Parallelize the training and evaluation
-Parallel(n_jobs=-1)(delayed(train_and_evaluate)(model, params, model_name, results, use_pca=(model_name in ['QDA', 'Gaussian Process'])) for model_name, model, params in models_params)
+Parallel(n_jobs=12)(delayed(train_and_evaluate)(model, params, model_name, results, use_pca=(model_name in ['QDA', 'Gaussian Process'])) for model_name, model, params in models_params)
 
 # Convert results back to a regular dictionary
 results = dict(results)
@@ -180,7 +164,8 @@ def extract_transform_predictions(model_name):
 # List of model names
 model_names = [
     'SVM',
-    'Logistic Regression',
+    'Logistic Regression (liblinear)',
+    'Logistic Regression (saga)',
     'K-Nearest Neighbors',
     'Decision Tree',
     'AdaBoost',
@@ -222,7 +207,8 @@ results['Majority Vote Ensemble'] = {
 # Extract accuracies from the results dictionary
 accuracies = np.array([
     results['SVM']['Accuracy'],
-    results['Logistic Regression']['Accuracy'],
+    results['Logistic Regression (liblinear)']['Accuracy'],
+    results['Logistic Regression (saga)']['Accuracy'],
     results['K-Nearest Neighbors']['Accuracy'],
     results['Decision Tree']['Accuracy'],
     results['AdaBoost']['Accuracy'],
